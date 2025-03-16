@@ -48,22 +48,25 @@ Merging strat:
 +-----------------------+
 *)
 open! Core
-
 open! Async
 
-module Entry : sig
-  type 'a kind =
-    | File
-    | Dir of { children : 'a list }
-  [@@deriving sexp]
+module Inc : Incremental.S
+module Var = Inc.Var
+module Observer = Inc.Observer
 
-  type t =
-    { kind : t kind
-    ; name : string
-    ; hash : int
+module FsTree : sig
+  type meta =
+    { name : string
     ; permissions : int
     }
-  [@@deriving sexp]
-end
+  [@@deriving sexp_of, fields ~getters]
 
-val file_tree : string -> Entry.t
+  type t =
+    | File of (meta * bytes Var.t)
+    | Directory of (meta * t array)
+  [@@deriving sexp_of]
+
+  val create : string -> t
+
+  val hash : t -> int Inc.t
+end

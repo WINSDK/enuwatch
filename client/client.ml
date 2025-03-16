@@ -2,66 +2,45 @@ open! Core
 open! Async
 open Enuwatch
 
-module Test = struct
-  module Inc = Incremental.Make ()
-  module Var = Inc.Var
-  module Observer = Inc.Observer
-
-  type tree =
-    | Leaf of string Var.t
-    | Node of tree array
-
-  let hash s =
-    printf "hashing '%s'\n" s;
-    String.hash s
-  ;;
-
-  let rec tree_hash t =
-    match t with
-    | Leaf var -> Var.watch var |> Inc.map ~f:hash
-    | Node children -> Array.map children ~f:tree_hash |> Inc.sum_int
-
-  let create_leaf initial = Leaf (Var.create initial)
-  let create_node l = Node l
-
-  let f =
-    let leaf1 = create_leaf "hello" in
-    let leaf2 = create_leaf "world" in
-    let root = create_node [| leaf1; leaf2 |] in
-
-    let hash_incr = tree_hash root in
-    let observer = Inc.observe hash_incr in
-    Observer.on_update_exn observer ~f:(function
-      | Observer.Update.Changed (_, h) -> printf "Root hash updated: %d\n" h
-      | Observer.Update.Initialized h -> printf "Root hash: %d\n" h
-      | _ -> ()
-    );
-
-    (* Function to update a leaf's value *)
-    let update_leaf tree new_val =
-      match tree with
-      | Leaf var -> Var.set var new_val
-      | _ -> ()
-    in
-
-    Inc.stabilize ();
-    update_leaf leaf1 "goodbye";
-    Inc.stabilize ();
-end
+(* let f = *)
+(*   let leaf1 = create_leaf "hello" in *)
+(*   let leaf2 = create_leaf "world" in *)
+(*   let root = create_node [| leaf1; leaf2 |] in *)
+(*   let hash_incr = tree_hash root in *)
+(*   let observer = Inc.observe hash_incr in *)
+(*   Observer.on_update_exn observer ~f:(function *)
+(*     | Observer.Update.Changed (_, h) -> printf "Root hash updated: %d\n" h *)
+(*     | Observer.Update.Initialized h -> printf "Root hash: %d\n" h *)
+(*     | _ -> ()); *)
+(*   (1* Function to update a leaf's value *1) *)
+(*   let update_leaf tree new_val = *)
+(*     match tree with *)
+(*     | Leaf var -> Var.set var new_val *)
+(*     | _ -> () *)
+(*   in *)
+(*   Inc.stabilize (); *)
+(*   update_leaf leaf1 "goodbye"; *)
+(*   Inc.stabilize () *)
+(* ;; *)
 
 let main ~dir =
-  let _tree = file_tree dir in
-  (* print_s (Entry.sexp_of_t tree); *)
-  Test.f;
+  let tree = FsTree.create dir in
+  print_s (FsTree.sexp_of_t tree);
+  let hash = FsTree.hash tree in
+  Observer.on_update_exn (Inc.observe hash) ~f:(function
+    | Observer.Update.Changed (_, h) -> printf "Root hash updated: %d\n" h
+    | Observer.Update.Initialized h -> printf "Root hash: %d\n" h
+    | _ -> ());
+  Inc.stabilize ();
   Deferred.unit
 ;;
 
 let command =
   Async.Command.async
-    ~summary:"Remote execution"
-    ~readme:(fun () -> "Does remote execution.")
+    ~summary:"Filesystem watcher with timing comparison"
+    ~readme:(fun () -> "Watches a directory tree and compares sync vs async performance.")
     (let%map_open.Command dir =
-       flag "-dir" (required string) ~doc:"Where to watch files"
+       flag "-dir" (required Filename_unix.arg_type) ~doc:"DIR Directory to watch"
      in
      fun () -> main ~dir)
 ;;

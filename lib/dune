@@ -5,6 +5,7 @@
   core_unix.time_float_unix
   core_unix.filename_unix
   async
+  async_unix
   incremental
   ppx_jane)
  (inline_tests)
