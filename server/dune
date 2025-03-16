@@ -1,0 +1,14 @@
+(executable
+ (name server)
+ (public_name enuwatch_server)
+ (libraries
+  enuwatch
+  core
+  core_unix.time_float_unix
+  core_unix.filename_unix
+  async
+  incremental
+  ppx_jane
+  core_unix.command_unix)
+ (preprocess
+  (pps ppx_jane)))

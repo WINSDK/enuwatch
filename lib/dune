@@ -1,0 +1,12 @@
+(library
+ (name enuwatch)
+ (libraries
+  core
+  core_unix.time_float_unix
+  core_unix.filename_unix
+  async
+  incremental
+  ppx_jane)
+ (inline_tests)
+ (preprocess
+  (pps ppx_jane)))
