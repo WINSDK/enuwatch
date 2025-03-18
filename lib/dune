@@ -7,7 +7,9 @@
   async
   async_unix
   incremental
+  incr_map
+  legacy_diffable
   ppx_jane)
  (inline_tests)
  (preprocess
-  (pps ppx_jane)))
+  (pps ppx_jane ppx_diff.ppx_diff)))

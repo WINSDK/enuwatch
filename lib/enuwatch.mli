@@ -50,23 +50,27 @@ Merging strat:
 open! Core
 open! Async
 
-module Inc : Incremental.S
-module Var = Inc.Var
-module Observer = Inc.Observer
+module Incr : Incremental.S
+module Var = Incr.Var
+module Observer = Incr.Observer
 
 module FsTree : sig
   type meta =
     { name : string
     ; permissions : int
     }
-  [@@deriving sexp_of, fields ~getters]
+  [@@deriving sexp_of, bin_io, fields ~getters, diff]
 
-  type t =
-    | File of (meta * bytes Var.t)
-    | Directory of (meta * t array)
+  type kind =
+    | File
+    | Directory
+    | Unknown
+  [@@deriving sexp_of]
+
+  type t = (kind * meta) String.Map.t
   [@@deriving sexp_of]
 
   val create : string -> t
 
-  val hash : t -> int Inc.t
+  val hash : t Incr.t -> int Incr.t
 end

@@ -24,14 +24,14 @@ open Enuwatch
 (* ;; *)
 
 let main ~dir =
-  let tree = FsTree.create dir in
-  print_s (FsTree.sexp_of_t tree);
-  let hash = FsTree.hash tree in
-  Observer.on_update_exn (Inc.observe hash) ~f:(function
+  let tree = Var.create (FsTree.create dir) in
+  let hash = FsTree.hash (Var.watch tree) in
+
+  Observer.on_update_exn (Incr.observe hash) ~f:(function
     | Observer.Update.Changed (_, h) -> printf "Root hash updated: %d\n" h
     | Observer.Update.Initialized h -> printf "Root hash: %d\n" h
     | _ -> ());
-  Inc.stabilize ();
+  Incr.stabilize ();
   Deferred.unit
 ;;
 

@@ -9,61 +9,60 @@ open! Core
    5. Change in tree structure or in computing a leaf will trigger recalculating parent hashes.
 *)
 
-module Inc = Incremental.Make ()
-module Var = Inc.Var
-module Observer = Inc.Observer
+module Incr = Incremental.Make ()
+module Var = Incr.Var
+module Observer = Incr.Observer
 
 module FsTree = struct
   type meta =
     { name : string
     ; permissions : int
     }
-  [@@deriving sexp_of, bin_io, fields ~getters]
+  [@@deriving sexp_of, bin_io, fields ~getters, diff]
 
-  type t =
-    | File of (meta * bytes Var.t)
-    | Directory of (meta * t array)
+  type kind =
+    | File
+    | Directory
+    | Unknown
+  [@@deriving sexp_of]
 
-  let rec sexp_of_t = function
-    | File (meta, _) -> [%sexp_of: meta] meta
-    | Directory (meta, children) -> [%sexp_of: meta * t array] (meta, children)
-  ;;
+  type t = (kind * meta) String.Map.t
+  [@@deriving sexp_of]
 
   let create path =
     let ( / ) = Filename.concat in
-    let parse ~f ~parent entry =
+    let rec parse ~parent acc entry =
       let path = parent / entry in
-      let fd = Core_unix.openfile ~mode:[Core_unix.O_RDONLY] path in
-      let stat = Core_unix.fstat fd in
+      let stat = Core_unix.stat path in
       let meta = { name = entry; permissions = stat.st_perm } in
       match stat.st_kind with
-      | Core_unix.S_REG ->
-        let buf = Bytes.create (Int.of_int64_trunc stat.st_size) in
-        Core_unix.read fd ~buf |> ignore;
-        Core_unix.close fd;
-        File (meta, Var.create buf)
+      | Core_unix.S_REG -> Map.add_exn acc ~key:path ~data:(File, meta)
       | Core_unix.S_DIR ->
-        Core_unix.close fd;
-        let children = f path in
-        Directory (meta, children)
+        let acc = Map.add_exn acc ~key:path ~data:(Directory, meta) in
+        let entries = Sys_unix.readdir path in
+        Array.sort entries ~compare:String.compare;
+        Array.fold entries ~init:acc ~f:(parse ~parent:path)
       (* Unsupported inode kinds are stored as empty file's *)
-      | _ -> File (meta, Var.create (Bytes.create 0))
+      | _ -> Map.add_exn acc ~key:path ~data:(Unknown, meta)
     in
-    let rec build_tree path =
-      let entries = Sys_unix.ls_dir path |> List.to_array in
-      Array.sort entries ~compare:String.compare;
-      Array.map entries ~f:(parse ~f:build_tree ~parent:path)
-    in
-    let path = Filename_unix.realpath path in
-    let children = build_tree path in
     let parent, entry = Filename.split path in
-    parse ~f:(Fn.const children) ~parent entry
+    parse ~parent String.Map.empty entry
   ;;
 
-  let rec hash = function
-    | File (_, data) -> Var.watch data |> Inc.map ~f:(fun b ->
-        Bytes.unsafe_to_string ~no_mutation_while_string_reachable:b |> String.hash)
-    | Directory (_, children) -> Array.map children ~f:hash |> Inc.sum_int
+  let hash t =
+    let hash ~key:path ~data:(kind, meta) h_old =
+      printf "hashing %s\n" path;
+      let h_new =
+        match kind with
+        | File ->
+          let data = In_channel.read_all path in
+          Int.( lxor ) (String.hash data) (Int.hash meta.permissions)
+        | Directory -> Int.hash meta.permissions
+        | Unknown -> 0
+      in
+      Int.( lxor ) h_old h_new
+    in
+    Incr_map.unordered_fold t ~init:0 ~add:hash ~remove:hash
   ;;
 end
 
@@ -84,33 +83,31 @@ let%expect_test "file_tree creates correct tree structure" =
   write_file ("dir1" / "subdir" / "file3.txt") "Nested file";
   write_file ("dir2" / "file4.txt") "Another file";
   (* Change the mkdtemp name to something consistent *)
-  let meta_map m = { m with FsTree.name = "exp_test" } in
-  let tree =
-    match FsTree.create base_dir with
-    | FsTree.Directory (meta, t) -> FsTree.Directory (meta_map meta, t)
-    | FsTree.File (meta, t) -> FsTree.File (meta_map meta, t)
-  in
+  (* let meta_map m = { m with FsTree.name = "exp_test" } in *)
+  let tree = FsTree.create base_dir in
+  let tree = String.Map.map_keys_exn tree ~f:(fun path ->
+    String.substr_replace_first path ~pattern:("./" ^ base_dir) ~with_:"."
+  ) in
   print_s ([%sexp_of: FsTree.t] tree);
   [%expect
     {|
-    (((name exp_test) (permissions 448))
-     ((((name dir1) (permissions 493))
-       (((name file2.txt) (permissions 420))
-        (((name subdir) (permissions 493))
-         (((name file3.txt) (permissions 420))))))
-      (((name dir2) (permissions 493)) (((name file4.txt) (permissions 420))))
-      ((name file1.txt) (permissions 420))))
+    ((. (Directory ((name exp_test.tmp.OPwi3r) (permissions 448))))
+     (./dir1 (Directory ((name dir1) (permissions 493))))
+     (./dir1/file2.txt (File ((name file2.txt) (permissions 420))))
+     (./dir1/subdir (Directory ((name subdir) (permissions 493))))
+     (./dir1/subdir/file3.txt (File ((name file3.txt) (permissions 420))))
+     (./dir2 (Directory ((name dir2) (permissions 493))))
+     (./dir2/file4.txt (File ((name file4.txt) (permissions 420))))
+     (./file1.txt (File ((name file1.txt) (permissions 420)))))
     |}];
   let dir_count = ref 0 in
   let file_count = ref 0 in
-  let rec count_entries entry =
-    match entry with
-    | FsTree.File _ -> incr file_count
-    | FsTree.Directory (_, children) ->
-      incr dir_count;
-      Array.iter children ~f:count_entries
-  in
-  count_entries tree;
+  Map.iter tree ~f:(fun (kind, _meta) ->
+    match kind with
+    | FsTree.File -> incr file_count
+    | FsTree.Directory -> incr dir_count
+    | FsTree.Unknown -> ()
+  );
   printf "Directory count: %d\n" !dir_count;
   [%expect {| Directory count: 4 |}];
   printf "File count: %d\n" !file_count;
