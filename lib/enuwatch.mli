@@ -48,8 +48,8 @@ Merging strat:
 +-----------------------+
 *)
 open! Core
-open! Async
 
+open! Async
 module Incr : Incremental.S
 module Var = Incr.Var
 module Observer = Incr.Observer
@@ -67,10 +67,8 @@ module FsTree : sig
     | Unknown
   [@@deriving sexp_of]
 
-  type t = (kind * meta) String.Map.t
-  [@@deriving sexp_of]
+  type t = (kind * meta) String.Map.t [@@deriving sexp_of]
 
   val create : string -> t
-
   val hash : t Incr.t -> int Incr.t
 end

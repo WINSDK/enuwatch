@@ -26,8 +26,7 @@ module FsTree = struct
     | Unknown
   [@@deriving sexp_of]
 
-  type t = (kind * meta) String.Map.t
-  [@@deriving sexp_of]
+  type t = (kind * meta) String.Map.t [@@deriving sexp_of]
 
   let create path =
     let ( / ) = Filename.concat in
@@ -82,16 +81,19 @@ let%expect_test "file_tree creates correct tree structure" =
   write_file ("dir1" / "file2.txt") "Content of file2";
   write_file ("dir1" / "subdir" / "file3.txt") "Nested file";
   write_file ("dir2" / "file4.txt") "Another file";
-  (* Change the mkdtemp name to something consistent *)
-  (* let meta_map m = { m with FsTree.name = "exp_test" } in *)
   let tree = FsTree.create base_dir in
-  let tree = String.Map.map_keys_exn tree ~f:(fun path ->
-    String.substr_replace_first path ~pattern:("./" ^ base_dir) ~with_:"."
-  ) in
+  (* Change the mkdtemp name to something consistent *)
+  let tree =
+    Map.update tree ("./" ^ base_dir) ~f:(function
+      | Some (Directory, meta) -> Directory, { meta with name = "exp_test" }
+      | _ -> failwith "unreachable")
+    |> String.Map.map_keys_exn
+         ~f:(String.substr_replace_first ~pattern:("./" ^ base_dir) ~with_:".")
+  in
   print_s ([%sexp_of: FsTree.t] tree);
   [%expect
     {|
-    ((. (Directory ((name exp_test.tmp.OPwi3r) (permissions 448))))
+    ((. (Directory ((name exp_test) (permissions 448))))
      (./dir1 (Directory ((name dir1) (permissions 493))))
      (./dir1/file2.txt (File ((name file2.txt) (permissions 420))))
      (./dir1/subdir (Directory ((name subdir) (permissions 493))))
@@ -106,11 +108,10 @@ let%expect_test "file_tree creates correct tree structure" =
     match kind with
     | FsTree.File -> incr file_count
     | FsTree.Directory -> incr dir_count
-    | FsTree.Unknown -> ()
-  );
+    | FsTree.Unknown -> ());
   printf "Directory count: %d\n" !dir_count;
   [%expect {| Directory count: 4 |}];
   printf "File count: %d\n" !file_count;
   [%expect {| File count: 4 |}];
-  Sys_unix.command (sprintf "rm -rf %s" base_dir) |> ignore;
+  Sys_unix.command (sprintf "rm -rf %s" base_dir) |> ignore
 ;;

@@ -13,12 +13,10 @@ type t =
   ; order : string Queue.t (* Front is least recently used, back is most recently used *)
   }
 
-(* Create a new cache with specified capacity *)
 let create ~capacity =
   { capacity; cache = Hashtbl.create (module String); order = Queue.create () }
 ;;
 
-(* Queue manipulation helpers *)
 let remove_from_queue q key =
   let keys = Queue.to_list q in
   Queue.clear q;
@@ -50,7 +48,7 @@ let get t key =
     Some data
 ;;
 
-let%expect_test "Cache basic operations" =
+let setup_test_env () =
   let base_dir = Core_unix.mkdtemp "cache_test" in
   let ( / ) = Filename.concat in
   let write_file path content =
@@ -65,7 +63,6 @@ let%expect_test "Cache basic operations" =
   let file2 = write_file "c2" "content2" in
   let file3 = write_file "c3" "content3" in
   let file4 = write_file "c4" "content4" in
-  (* Create cache for testing *)
   let cache = create ~capacity:3 in
   let current_size t = Hashtbl.length t.cache in
   let current_order t =
@@ -73,9 +70,13 @@ let%expect_test "Cache basic operations" =
     |> List.map ~f:(String.chop_prefix_exn ~prefix:base_dir)
     |> List.map ~f:(String.( ^ ) "cache_test")
   in
-  (*--------------------------*)
-  (* Test 1: Initial caching *)
-  (*--------------------------*)
+  base_dir, (file1, file2, file3, file4), cache, current_size, current_order
+;;
+
+let%expect_test "Initial caching" =
+  let _, (file1, file2, file3, _), cache, current_size, current_order =
+    setup_test_env ()
+  in
   let c1 = Option.value_exn (get cache file1) in
   let c2 = Option.value_exn (get cache file2) in
   let c3 = Option.value_exn (get cache file3) in
@@ -91,23 +92,33 @@ let%expect_test "Cache basic operations" =
     file3: content3
     Cache size: 3
     Cache order: cache_test/c1, cache_test/c2, cache_test/c3
-    |}];
-  (*------------------------------------*)
-  (* Test 2: Updating access order     *)
-  (*------------------------------------*)
-  let _ = Option.value_exn (get cache file1) in
-  printf "\nAfter accessing file1 again:\n";
+    |}]
+;;
+
+let%expect_test "Updating access order" =
+  let _, (file1, file2, file3, _), cache, _, current_order = setup_test_env () in
+  Option.value_exn (get cache file1) |> ignore;
+  Option.value_exn (get cache file2) |> ignore;
+  Option.value_exn (get cache file3) |> ignore;
+  Option.value_exn (get cache file1) |> ignore;
+  printf "After accessing file1 again:\n";
   printf "Cache order: %s\n" (String.concat ~sep:", " (current_order cache));
   [%expect
     {|
     After accessing file1 again:
     Cache order: cache_test/c2, cache_test/c3, cache_test/c1
-    |}];
-  (*------------------------------------*)
-  (* Test 3: Eviction when full        *)
-  (*------------------------------------*)
+    |}]
+;;
+
+let%expect_test "Eviction when full" =
+  let _, (file1, file2, file3, file4), cache, current_size, current_order =
+    setup_test_env ()
+  in
+  Option.value_exn (get cache file1) |> ignore;
+  Option.value_exn (get cache file2) |> ignore;
+  Option.value_exn (get cache file3) |> ignore;
   let c4 = Option.value_exn (get cache file4) in
-  printf "\nAfter adding file4 (eviction should occur):\n";
+  printf "After adding file4 (eviction should occur):\n";
   printf "file4: %s\n" c4;
   printf "Cache size: %d\n" (current_size cache);
   printf "Cache order: %s\n" (String.concat ~sep:", " (current_order cache));
@@ -116,13 +127,21 @@ let%expect_test "Cache basic operations" =
     After adding file4 (eviction should occur):
     file4: content4
     Cache size: 3
-    Cache order: cache_test/c3, cache_test/c1, cache_test/c4
-    |}];
-  (*------------------------------------*)
-  (* Test 4: Re-reading evicted file   *)
-  (*------------------------------------*)
+    Cache order: cache_test/c2, cache_test/c3, cache_test/c4
+    |}]
+;;
+
+let%expect_test "Re-reading evicted file" =
+  let _, (file1, file2, file3, file4), cache, current_size, current_order =
+    setup_test_env ()
+  in
+  Option.value_exn (get cache file1) |> ignore;
+  Option.value_exn (get cache file2) |> ignore;
+  Option.value_exn (get cache file3) |> ignore;
+  let _ = Option.value_exn (get cache file4) in
+  (* Re-read the evicted file *)
   let c2_again = Option.value_exn (get cache file2) in
-  printf "\nAfter accessing file2 again (should be re-read):\n";
+  printf "After accessing file2 again (should be re-read):\n";
   printf "file2: %s\n" c2_again;
   printf "Cache size: %d\n" (current_size cache);
   printf "Cache order: %s\n" (String.concat ~sep:", " (current_order cache));
@@ -131,7 +150,7 @@ let%expect_test "Cache basic operations" =
     After accessing file2 again (should be re-read):
     file2: content2
     Cache size: 3
-    Cache order: cache_test/c1, cache_test/c4, cache_test/c2
+    Cache order: cache_test/c3, cache_test/c4, cache_test/c2
     |}];
   (* Cleanup temporary files *)
   List.iter [ file1; file2; file3; file4 ] ~f:Sys_unix.remove

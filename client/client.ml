@@ -26,7 +26,6 @@ open Enuwatch
 let main ~dir =
   let tree = Var.create (FsTree.create dir) in
   let hash = FsTree.hash (Var.watch tree) in
-
   Observer.on_update_exn (Incr.observe hash) ~f:(function
     | Observer.Update.Changed (_, h) -> printf "Root hash updated: %d\n" h
     | Observer.Update.Initialized h -> printf "Root hash: %d\n" h
