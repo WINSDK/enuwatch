@@ -1,5 +1,4 @@
 open! Core
-open! Async
 open Enuwatch
 
 (* let f = *)
@@ -24,18 +23,19 @@ open Enuwatch
 (* ;; *)
 
 let main ~dir =
-  let tree = Var.create (FsTree.create dir) in
-  let hash = FsTree.hash (Var.watch tree) in
-  Observer.on_update_exn (Incr.observe hash) ~f:(function
-    | Observer.Update.Changed (_, h) -> printf "Root hash updated: %d\n" h
-    | Observer.Update.Initialized h -> printf "Root hash: %d\n" h
-    | _ -> ());
-  Incr.stabilize ();
-  Deferred.unit
+  (* let tree = Var.create (FsTree.create dir) in *)
+  (* let hash = FsTree.hash (Var.watch tree) in *)
+  (* Observer.on_update_exn (Incr.observe hash) ~f:(function *)
+  (*   | Observer.Update.Changed (_, h) -> printf "Root hash updated: %d\n" h *)
+  (*   | Observer.Update.Initialized h -> printf "Root hash: %d\n" h *)
+  (*   | _ -> ()); *)
+  (* Incr.stabilize (); *)
+  let t = FsTree.of_fs_dir dir in
+  print_s (FsTree.sexp_of_t t);
 ;;
 
 let command =
-  Async.Command.async
+  Command.basic
     ~summary:"Filesystem watcher with timing comparison"
     ~readme:(fun () -> "Watches a directory tree and compares sync vs async performance.")
     (let%map_open.Command dir =

@@ -1,10 +1,9 @@
 open! Core
-open! Async
 
-let main ~dir:_ = Deferred.unit
+let main ~dir:_ = ()
 
 let command =
-  Async.Command.async
+  Command.basic
     ~summary:"Remote execution"
     ~readme:(fun () -> "Does remote execution.")
     (let%map_open.Command dir =
