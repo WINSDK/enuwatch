@@ -1,0 +1,31 @@
+(library
+ (name fswatch)
+ (public_name fswatch)
+ (c_library_flags
+  (:standard -lfswatch)
+  (:include lflags))
+ (libraries threads sexplib)
+ (preprocess (pps ppx_sexp_conv))
+ (foreign_stubs
+  (language c)
+  (names stub)
+  (flags
+   (:include inc_cflags))))
+
+(rule
+ (enabled_if
+  (= %{system} "macosx"))
+ (targets inc_cflags)
+ (action
+  (with-stdout-to
+   inc_cflags
+   (bash "echo -I$(brew --prefix)/include/libfswatch/c"))))
+
+(rule
+ (enabled_if
+  (= %{system} "macosx"))
+ (targets lflags)
+ (action
+  (with-stdout-to
+   lflags
+   (bash "echo -L$(brew --prefix)/lib"))))

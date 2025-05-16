@@ -1,0 +1,6 @@
+Enuwatch
+=====
+
+Tool for interactive development on remote machine (still very much a WIP):
+* Listens to fs directory changes.
+* Keeps tree in memory and sends diff's.

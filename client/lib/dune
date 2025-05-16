@@ -1,0 +1,18 @@
+(library
+ (name client)
+ (libraries
+  enuwatch
+  fswatch
+  fswatch_async
+  core
+  core_unix.time_float_unix
+  core_unix.filename_unix
+  async
+  incremental
+  ppx_jane
+  angstrom 
+  faraday
+  re)
+ (inline_tests)
+ (preprocess
+  (pps ppx_jane)))
